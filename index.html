@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Block Blast Neon</title>
+<title>Block Blast Neon Stick Drag</title>
 <style>
   body {
     background: radial-gradient(circle at center, #222 0%, #111 40%, #000 100%);
@@ -18,6 +18,7 @@
     margin: 10px;
     font-size: 22px;
     text-shadow: 0 0 10px #4caf50;
+    z-index: 3;
   }
 
   #board {
@@ -58,7 +59,7 @@
     display: flex;
     gap: 20px;
     position: relative;
-    z-index: 2;
+    z-index: 3;
   }
 
   .piece {
@@ -69,6 +70,7 @@
     border-radius: 8px;
     cursor: grab;
     box-shadow: 0 0 15px #4caf50;
+    position: relative;
   }
 
   .pblock {
@@ -105,7 +107,7 @@
     border-radius: 50%;
     pointer-events: none;
     box-shadow: 0 0 10px #4caf50;
-    z-index: 3;
+    z-index: 4;
   }
 </style>
 </head>
@@ -120,6 +122,11 @@
 <script>
 const boardSize = 8;
 let score = 0;
+
+let draggingPiece = null;
+let dragShape = null;
+let offsetX = 0;
+let offsetY = 0;
 
 // Board array
 let board = Array.from({ length: boardSize }, () =>
@@ -137,6 +144,8 @@ function drawBoard() {
     for (let c = 0; c < boardSize; c++) {
       const cell = document.createElement("div");
       cell.classList.add("cell");
+      cell.dataset.row = r;
+      cell.dataset.col = c;
       if (board[r][c] === 1) cell.classList.add("filled");
       boardEl.appendChild(cell);
     }
@@ -166,7 +175,6 @@ function generatePieces() {
     piece.classList.add("piece");
 
     piece.dataset.shape = JSON.stringify(shape);
-
     piece.style.gridTemplateColumns = `repeat(${shape[0].length}, 30px)`;
 
     shape.forEach(row => {
@@ -178,37 +186,72 @@ function generatePieces() {
       });
     });
 
-    piece.draggable = true;
-
-    piece.addEventListener("dragstart", e => {
-      e.dataTransfer.setData("shape", piece.dataset.shape);
-    });
-
+    enableDrag(piece, shape);
     piecesEl.appendChild(piece);
   }
 }
 
-// Allow dropping on board
-boardEl.addEventListener("dragover", e => e.preventDefault());
+// Stick-under-finger drag system
+function enableDrag(piece, shape) {
+  piece.addEventListener("pointerdown", e => {
+    draggingPiece = piece;
+    dragShape = shape;
 
-boardEl.addEventListener("drop", e => {
-  const shape = JSON.parse(e.dataTransfer.getData("shape"));
+    const rect = piece.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
 
+    piece.style.position = "absolute";
+    piece.style.zIndex = 999;
+    piece.style.opacity = 0.8;
+
+    movePiece(e);
+  });
+
+  piece.addEventListener("pointermove", e => {
+    if (draggingPiece) movePiece(e);
+  });
+
+  piece.addEventListener("pointerup", e => {
+    if (!draggingPiece) return;
+
+    const dropPos = getBoardCellFromPointer(e.clientX, e.clientY);
+
+    if (dropPos && placePiece(dragShape, dropPos.row, dropPos.col)) {
+      score += countBlocks(dragShape);
+      scoreEl.textContent = "Score: " + score;
+      clearLines();
+      generatePieces();
+      drawBoard();
+    }
+
+    resetPiece(piece);
+    draggingPiece = null;
+    dragShape = null;
+  });
+}
+
+function movePiece(e) {
+  draggingPiece.style.left = (e.clientX - offsetX) + "px";
+  draggingPiece.style.top = (e.clientY - offsetY) + "px";
+}
+
+function resetPiece(piece) {
+  piece.style.position = "";
+  piece.style.left = "";
+  piece.style.top = "";
+  piece.style.opacity = 1;
+}
+
+function getBoardCellFromPointer(x, y) {
   const rect = boardEl.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
+  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
 
-  const col = Math.floor(x / 44);
-  const row = Math.floor(y / 44);
+  const col = Math.floor((x - rect.left) / 44);
+  const row = Math.floor((y - rect.top) / 44);
 
-  if (placePiece(shape, row, col)) {
-    score += countBlocks(shape); // per block
-    scoreEl.textContent = "Score: " + score;
-    clearLines();
-    generatePieces();
-    drawBoard();
-  }
-});
+  return { row, col };
+}
 
 // Count blocks in a shape
 function countBlocks(shape) {
@@ -278,7 +321,7 @@ function clearLines() {
   for (let r = 0; r < boardSize; r++) {
     if (board[r].every(c => c === 1)) {
       board[r].fill(0);
-      score += Math.floor(Math.random() * 51) + 150; // 150–200
+      score += Math.floor(Math.random() * 51) + 150;
       cleared = true;
     }
   }
@@ -291,7 +334,7 @@ function clearLines() {
     }
     if (full) {
       for (let r = 0; r < boardSize; r++) board[r][c] = 0;
-      score += Math.floor(Math.random() * 51) + 150; // 150–200
+      score += Math.floor(Math.random() * 51) + 150;
       cleared = true;
     }
   }
